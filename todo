@@ -1,0 +1,458 @@
+fileToZip, err := os.Open("./BTS/" + v)
+		if err != nil {
+			return
+		}
+		defer fileToZip.Close()
+
+		// Get the file information
+		info, err := fileToZip.Stat()
+		if err != nil {
+			return
+		}
+
+		header, err := zip.FileInfoHeader(info)
+		if err != nil {
+			return
+		}
+
+		header.Name = v
+
+		header.Method = zip.Deflate
+
+		writer, err := zipWriter.CreateHeader(header)
+		if err != nil {
+			return
+		}
+		_, err = io.Copy(writer, fileToZip)
+		if err != nil {
+			return
+		}
+
+		log.Println("Compressed data written to file.")
+
+
+
+		Approach 2 tar :
+		tarWriter := tar.NewWriter(gzipWriter)
+
+		defer tarWriter.Close()
+
+		header, err := tar.FileInfoHeader(info, info.Name())
+		if err != nil {
+			return
+		}
+		header.Name = v
+
+		err = tarWriter.WriteHeader(header)
+		if err != nil {
+			checkError(err)
+		}
+
+		3rd approach
+		// reader := bufio.NewReader(fileToGzip)
+		// content, _ := ioutil.ReadAll(reader)
+
+		// info, err := fileToGzip.Stat()
+		// if err != nil {
+		// 	return
+		// }
+	// gzipWriter.Write(content)
+
+
+
+	func zipFiles(ctx context.Context, filesToZip []string, bucketName string) {
+		writer, err := os.Create(bucketName + ".gz")
+		if err != nil {
+			checkError(err)
+		}
+	
+		defer writer.Close()
+	
+		fileDownloadPath := "./BTS/"
+		for _, v := range filesToZip {
+			err := utility.MinioConnect.FGetObject(ctx, utility.Config.Minio.MinioBucket, v, fileDownloadPath+v, minio.GetObjectOptions{})
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+			// 008ea875-c535-4b68-a0bf-65222824520b
+		}
+		counter := 0
+		err = filepath.Walk(fileDownloadPath,
+			func(path string, info os.FileInfo, err error) error {
+				if err != nil {
+					checkError(err)
+				}
+				counter++
+				if !strings.EqualFold("BTS", info.Name()) {
+					fmt.Println(path)
+	
+					fileToGzip, err := os.Open("." + path)
+					if err != nil {
+						checkError(err)
+						panic(err)
+					}
+	
+					defer fileToGzip.Close()
+	
+					pgzipWriter, err := pgzip.NewWriterLevel(writer, pgzip.BestCompression)
+					if err != nil {
+						checkError(err)
+					}
+	
+					err = pgzipWriter.SetConcurrency(defaultBlockSize, runtime.GOMAXPROCS(2))
+					if err != nil {
+						checkError(err)
+					}
+	
+					defer pgzipWriter.Close()
+	
+					_, err = io.Copy(pgzipWriter, fileToGzip)
+					if err != nil {
+						checkError(err)
+					}
+					fmt.Println(counter)
+					if counter == 3 {
+						os.Exit(1)
+					}
+				}
+				return nil
+			})
+	
+		if err != nil {
+			checkError(err)
+		}
+	
+	}
+
+
+// ***************************************************************************************
+// func zipFiles(ctx context.Context, filesToZip []string, bucketName string) {
+// 	writer, err := os.Create(bucketName + ".tar.gz")
+// 	if err != nil {
+// 		checkError(err)
+// 	}
+
+// 	defer writer.Close()
+
+// 	pgzipWriter, err := pgzip.NewWriterLevel(writer, pgzip.BestCompression)
+// 	if err != nil {
+// 		checkError(err)
+// 	}
+
+// 	pgzipWriter.SetConcurrency(1048576, runtime.GOMAXPROCS(2))
+// 	defer pgzipWriter.Close()
+
+// 	tarWriter := tar.NewWriter(pgzipWriter)
+
+// 	defer tarWriter.Close()
+
+// 	fileDownloadPath := "./BTS/"
+// 	for _, v := range filesToZip {
+// 		err := utility.MinioConnect.FGetObject(ctx, utility.Config.Minio.MinioBucket, v, fileDownloadPath+v, minio.GetObjectOptions{})
+// 		if err != nil {
+// 			fmt.Println(err)
+// 			return
+// 		}
+// 		fmt.Println(v)
+// 		fileToGzip, err := os.Open("./BTS/" + v)
+// 		if err != nil {
+// 			checkError(err)
+// 		}
+// 		defer fileToGzip.Close()
+
+// 		info, err := fileToGzip.Stat()
+// 		if err != nil {
+// 			return
+// 		}
+
+// 		header, err := tar.FileInfoHeader(info, info.Name())
+// 		if err != nil {
+// 			return
+// 		}
+// 		header.Name = v
+
+// 		err = tarWriter.WriteHeader(header)
+// 		if err != nil {
+// 			checkError(err)
+// 		}
+
+// 		_, err = io.Copy(tarWriter, fileToGzip)
+// 		if err != nil {
+// 			checkError(err)
+// 		}
+
+// 		log.Println("Compressed data written to file.")
+// 	}
+
+// }
+
+// *************************************************************************************************
+
+// ***********************************************888
+	// var wg sync.WaitGroup
+	// wg.Add(15)
+	// for object := range objectInfo {
+	// 	fileDays := object.LastModified.Day() - currentTime.Day()
+	// 	fileTime := utility.Abs(fileDays)
+	// 	if err != nil {
+	// 		checkError(err)
+	// 	}
+	// 	//fmt.Println(days, object.LastModified.Day(), currentTime.Day(), fileTime)
+	// 	//go func(f, d int, o minio.ObjectInfo) {
+	// 	//defer wg.Done()
+	// 	if fileTime >= days {
+	// 		utility.Logger.Printf("Objects whih will be deleted are: %s", object.Key)
+	// 		objectsChan <- object
+	// 	}
+	// 	//}(fileTime, days, object)
+	// }
+	//wg.Wait()
+
+//**************************************************
+func tarAndGzip(files chan *os.File, writer io.Writer) *sync.WaitGroup {
+	pgzipWriter, err := pgzip.NewWriterLevel(writer, pgzip.BestCompression)
+	if err != nil {
+		checkError(err)
+	}
+	err = pgzipWriter.SetConcurrency(defaultBlockSize, runtime.GOMAXPROCS(2))
+	if err != nil {
+		checkError(err)
+	}
+
+	tarWriter := tar.NewWriter(pgzipWriter)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+		defer pgzipWriter.Close()
+		defer tarWriter.Close()
+		for f := range files {
+			info, err := os.Stat(f.Name())
+			if err != nil {
+				checkError(err)
+			}
+			utility.Logger.Println(info.Name())
+			header, err := tar.FileInfoHeader(info, info.Name())
+			if err != nil {
+				return
+			}
+			header.Name = f.Name()
+
+			err = tarWriter.WriteHeader(header)
+			if err != nil {
+				checkError(err)
+			}
+
+			_, err = io.Copy(tarWriter, f)
+			if err != nil {
+				checkError(err)
+			}
+		}
+	}()
+
+	return &wg
+}
+
+
+outFile, err := os.Create(header.Name)
+			if err != nil {
+				return fmt.Errorf("create: %w", err)
+
+			}
+			defer outFile.Close()
+			if _, err := io.Copy(outFile, tarReader); err != nil {
+				return fmt.Errorf("copy failed: %w", err)
+			}
+
+			xmlFile, err := os.Open("raml.xml")
+			if err != nil {
+				fmt.Println(err)
+			}
+			defer xmlFile.Close()
+			
+//fmt.Println(zipFileName)
+	// indexPos := strings.Index(zipFileName, "/")
+	// if indexPos == -1 {
+	// 	log.Println("No matching string found")
+	// 	return
+	// }
+	// trimZipFile := zipFileName[0:indexPos]
+	// writer, err := os.Create(trimZipFile + ".tar.gz")
+	// if err != nil {
+	// 	checkError(err)
+	// }
+
+
+// func putMinioObject(ctx context.Context, minioObjectsData []*minio.Object, buck string) {
+// 	//sseSrc := encrypt.DefaultPBKDF([]byte("password"), []byte("salt"))
+// 	//sseDst := encrypt.DefaultPBKDF([]byte("new-password"), []byte("new-salt"))
+
+// 	var srcOpt []minio.CopySrcOptions
+
+// 	for _, mo := range minioObjectsData {
+// 		info, err := mo.Stat()
+// 		if err != nil {
+// 			log.Println(err.Error())
+// 			return
+// 		}
+
+// 		if info.Size < defaultBlockSize {
+// 			continue
+// 		}
+
+// 		// headers := make(http.Header)
+
+// 		// // Set all the metadata headers.
+// 		// for _, v := range info.Metadata["Content-Type"] {
+// 		// 	headers.Set("Content-Type", v)
+// 		// }
+
+// 		opts := minio.CopySrcOptions{
+// 			Bucket:    buck,
+// 			Object:    info.Key,
+// 			MatchETag: info.ETag,
+// 			VersionID: info.VersionID,
+// 		}
+
+// 		srcOpt = append(srcOpt, opts)
+// 	}
+
+// 	fmt.Println(srcOpt)
+
+// 	dstOpts := minio.CopyDestOptions{
+// 		Bucket: buck,
+// 		Object: "snap.tar.gz",
+// 	}
+
+// 	// Compose object call by concatenating multiple source files.
+// 	uploadInfo, err := utility.MinioConnect.ComposeObject(context.Background(), dstOpts, srcOpt...)
+// 	if err != nil {
+// 		fmt.Println(err)
+// 		return
+// 	}
+
+// 	fmt.Println("Composed object successfully:", uploadInfo)
+
+// }
+
+
+24098459 Snapshot_MRBTS-747_Harakka_SBTS20A_ENB_0000_000943_000000_20200827-1258.tar.gz 
+&{2049 923550 1 33204 1000 1001 0 0 24098459 4096 47072 {1601787040 517528362} 
+{1601903741 782515814} {1601903741 782515814} [0 0 0]} false
+
+19147050 Snapshot_MRBTS-747_Harakka_SBTS20A_ENB_0000_000943_000000_20200827-1258.tar.gz 
+&{1 1423588 0 33279 1000 1001 0 0 19147050 4096 37400 {1601903809 307073366} 
+{1601903809 727053007} {1601903809 727053007} [0 0 0]} false
+
+// sys/unix
+fd, err := unix.MemfdCreate(gzipFileName, 0)
+if err != nil {
+	return nil, fmt.Errorf("file discriptor failed %s", err)
+}
+
+fmt.Println("file descriptor", fd)
+
+//writer = os.NewFile(uintptr(fd), gzipFileName+".tar.gz")
+
+// normal way of creating file in disk
+// writer, err = os.Create(gzipFileName + ".tar.gz")
+// if err != nil {
+// 	return nil, err
+// }
+//defer writer.Close()
+
+
+// Raml ...
+// type Raml struct {
+// 	XMLName xml.Name `xml:"raml"`
+// 	Text    string   `xml:",chardata"`
+// 	Xmlns   string   `xml:"xmlns,attr"`
+// 	Version string   `xml:"version,attr"`
+// 	CmData  struct {
+// 		Text          string `xml:",chardata"`
+// 		Type          string `xml:"type,attr"`
+// 		ManagedObject struct {
+// 			Text      string `xml:",chardata"`
+// 			Class     string `xml:"class,attr"`
+// 			DistName  string `xml:"distName,attr"`
+// 			Operation string `xml:"operation,attr"`
+// 			Version   string `xml:"version,attr"`
+// 			P         []struct {
+// 				Text string `xml:",chardata"`
+// 				Name string `xml:"name,attr"`
+// 			} `xml:"p"`
+// 		} `xml:"managedObject"`
+// 	} `xml:"cmData"`
+// }
+
+<?xml version="1.0" encoding="UTF-8"?>
+<raml xmlns="raml21.xsd" version="2.1">
+ <cmData type="actual">
+  <managedObject class=":DIAGSNAP" distName="MRBTS-747/DIAGSNAP-1" operation="create" version="NE3SADAPT_1806_001">
+   <p name="state">3</p>
+   <p name="filename">Snapshot_MRBTS-747_Harakka_SBTS20A_ENB_0000_000943_000000_20200827-1258/BTS747_120D_part_1.zip</p>
+  </managedObject>
+ </cmData>
+</raml>
+
+
+// Raml ...
+// type Raml struct {
+// 	XMLName xml.Name `xml:"raml"`
+// 	Text    string   `xml:",chardata"`
+// 	Xmlns   string   `xml:"xmlns,attr"`
+// 	Version string   `xml:"version,attr"`
+// 	CmData  `xml:"cmData"`
+// }
+
+// // CmData ...
+// type CmData struct {
+// 	Text          string `xml:",chardata"`
+// 	Type          string `xml:"type,attr"`
+// 	ManagedObject `xml:"managedObject"`
+// }
+
+// // ManagedObject ...
+// type ManagedObject struct {
+// 	Text      string `xml:",chardata"`
+// 	Class     string `xml:"class,attr"`
+// 	DistName  string `xml:"distName,attr"`
+// 	Operation string `xml:"operation,attr"`
+// 	Version   string `xml:"version,attr"`
+// 	P         `xml:"p"`
+// }
+
+// // P ...
+// type P []struct {
+// 	Text string `xml:",chardata"`
+// 	Name string `xml:"name,attr"`
+// }
+
+
+// flag.Parse()
+	// if *cpuprofile != "" {
+	// 	f, err := os.Create(*cpuprofile)
+	// 	if err != nil {
+	// 		log.Fatal(err)
+	// 	}
+	// 	defer pprof.StopCPUProfile()
+	// 	if err := pprof.StartCPUProfile(f); err != nil {
+	// 		log.Fatal("could not start CPU profile: ", err)
+	// 	}
+	// }
+// points to be discussed
+// what files we need to have in minio .log,.bin etc OR xz
+// Compression guide from minio : https://docs.min.io/docs/minio-compression-guide.html
+// Compression types
+// SelectCompressionNONE SelectCompressionType = "NONE"
+// SelectCompressionGZIP                       = "GZIP"
+// SelectCompressionBZIP                       = "BZIP2"
+
+// Estimated not accurate
+// decompression speed (fast > slow): gzip, zip > 7z > rar > bzip2
+// compression speed (fast > slow): gzip, zip > bzip2 > 7z > rar
+// compression ratio (better > worse): 7z > rar, bzip2 > gzip > zip
+// availability (unix): gzip > bzip2 > zip > 7z > rar

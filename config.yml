@@ -1,0 +1,11 @@
+minio:
+  minioEndpoint:  10.0.2.15:9000
+  minioAccesskey: minioadmin
+  minioSecretkey: minioadmin
+  minioBucket: diagsnap
+  minioObject:
+
+server:
+  port: 8080
+  timeoutRead: 5s
+  timeoutWrite: 15s
